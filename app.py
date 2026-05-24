@@ -25,8 +25,7 @@ def carregar_arquivos():
 @st.cache_data
 def carregar_dados():
     # Lê a base original (Certifique-se de que o ficheiro no GitHub se chama Obesity.csv)
-    return pd.read_csv('Obesity.csv')
-
+    return pd.read_csv('Obesity.csv', encoding='latin1')
 modelo_rf, le, colunas_modelo = carregar_arquivos()
 
 # ==========================================
@@ -185,8 +184,7 @@ elif opcao_menu == "⚙️ Pipeline Machine Learning":
             from sklearn.preprocessing import LabelEncoder
             
             try:
-                df = pd.read_csv('Obesity.csv', dtype=str)
-                
+                df = pd.read_csv('Obesity.csv', dtype=str, encoding='latin1')
                 idade_num = pd.to_numeric(df['Age'].str.split('.').str[0], errors='coerce')
                 df['Age'] = np.select([(idade_num >= 14) & (idade_num <= 61)], [idade_num], default=np.nan)
 
