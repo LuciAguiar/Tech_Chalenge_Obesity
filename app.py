@@ -20,25 +20,21 @@ def carregar_arquivos():
     nome_encoder = 'label_encoder.pkl'
     nome_colunas = 'colunas_modelo.pkl'
     
-    # Se os três arquivos existirem, carrega direto (Início Instantâneo)
     if os.path.exists(nome_modelo) and os.path.exists(nome_encoder) and os.path.exists(nome_colunas):
         modelo = joblib.load(nome_modelo)
         le = joblib.load(nome_encoder)
         colunas = joblib.load(nome_colunas)
         return modelo, le, colunas
     
-    # Fallback de Segurança: Se faltar algum arquivo, treina automaticamente na inicialização
     else:
         import numpy as np
         from sklearn.model_selection import train_test_split
         from sklearn.ensemble import RandomForestClassifier
         from sklearn.preprocessing import LabelEncoder
         
-        # Leitura com o tratamento de ponto e vírgula e encoding correto
         df = pd.read_csv('Obesity.csv', dtype=str, sep=';', encoding='latin1')
         df.columns = df.columns.str.strip()
         
-        # Aplicação da lógica de Winsorização/Clip homologada (73.50% acurácia)
         idade_num = pd.to_numeric(df['Age'].str.split('.').str[0], errors='coerce')
         df['Age'] = idade_num.clip(lower=14, upper=61).fillna(idade_num.median())
 
@@ -71,7 +67,6 @@ def carregar_arquivos():
         modelo_rf_novo = RandomForestClassifier(random_state=42)
         modelo_rf_novo.fit(X_treino, y_treino)
         
-        # Salva os arquivos para os próximos carregamentos serem instantâneos
         joblib.dump(modelo_rf_novo, nome_modelo)
         joblib.dump(le_novo, nome_encoder)
         joblib.dump(list(X_treino.columns), nome_colunas)
@@ -84,7 +79,6 @@ def carregar_dados():
     df.columns = df.columns.str.strip()
     return df
 
-# Garante que as variáveis globais do modelo estejam prontas assim que o app abre
 modelo_rf, le, colunas_modelo = carregar_arquivos()
 
 # ==========================================
@@ -196,7 +190,7 @@ if opcao_menu == "🔮 Análise Preditiva":
             st.dataframe(df_paciente_num)
 
 # ==========================================
-# PÁGINA 2: FONTE DE DADOS E DASHBOARDS (Cores Invertidas!)
+# PÁGINA 2: FONTE DE DADOS E DASHBOARDS 
 # ==========================================
 elif opcao_menu == "📊 Fonte de Dados":
     st.title("📊 Dashboards Analíticos")
@@ -221,8 +215,19 @@ elif opcao_menu == "📊 Fonte de Dados":
         ordem = ['Insufficient_Weight', 'Normal_Weight', 'Overweight_Level_I', 'Overweight_Level_II', 'Obesity_Type_I', 'Obesity_Type_II', 'Obesity_Type_III']
         fig3, ax3 = plt.subplots(figsize=(10,5))
         
-        # ALTERADO: palette='magma_r' para colocar cores escuras nos níveis mais altos
+        # 1. Cria o gráfico invertendo as cores (magma_r)
         sns.countplot(data=df, y='Obesity', order=ordem, palette='magma_r', ax=ax3)
+        
+        # 2. Adiciona o número exato no final de cada barra
+        for container in ax3.containers:
+            ax3.bar_label(container, padding=5, fontsize=10, color='black', weight='bold')
+            
+        # 3. Altera o texto do eixo X para mostrar a quantidade total da amostra
+        ax3.set_xlabel(f"Quantidade de Pacientes (Total da Amostra: {len(df)})", fontsize=11, labelpad=10)
+        ax3.set_ylabel("") # Remove o label lateral para deixar mais limpo
+        
+        sns.despine() # Remove as bordas superior e direita (deixa mais elegante)
+        
         st.pyplot(fig3)
         
         with st.expander("Ver Tabela de Dados Original (CSV)"):
