@@ -38,7 +38,7 @@ def carregar_arquivos():
         df = pd.read_csv('Obesity.csv', dtype=str, sep=';', encoding='latin1')
         df.columns = df.columns.str.strip()
         
-        # Aplicação da lógica de Winsorização/Clip homologada no Colab (73.50% acurácia)
+        # Aplicação da lógica de Winsorização/Clip homologada (73.50% acurácia)
         idade_num = pd.to_numeric(df['Age'].str.split('.').str[0], errors='coerce')
         df['Age'] = idade_num.clip(lower=14, upper=61).fillna(idade_num.median())
 
@@ -143,7 +143,7 @@ if opcao_menu == "🔮 Análise Preditiva":
         faf_pt = st.selectbox("Atividade Física Semanal", ["0 - Nenhuma", "1 - 1 a 2 dias", "2 - 3 a 4 dias", "3 - 5 ou mais dias"], index=1)
         
     with col4:
-        tue_pt = st.selectbox("Tempo diário em telas/dispositivos", ["0 - Até 2 hours", "1 - De 3 a 5 horas", "2 - Mais de 5 horas"], index=1)
+        tue_pt = st.selectbox("Tempo diário em telas/dispositivos", ["0 - Até 2 horas", "1 - De 3 a 5 horas", "2 - Mais de 5 horas"], index=1)
         calc_pt = st.selectbox("Consumo de bebida alcoólica", ['Não', 'Às vezes', 'Frequentemente', 'Sempre'], index=1)
         mtrans_pt = st.selectbox("Meio de transporte habitual", ['Automóvel', 'Moto', 'Bicicleta', 'Transporte Público', 'A pé'], index=3)
 
@@ -196,7 +196,7 @@ if opcao_menu == "🔮 Análise Preditiva":
             st.dataframe(df_paciente_num)
 
 # ==========================================
-# PÁGINA 2: FONTE DE DADOS E DASHBOARDS
+# PÁGINA 2: FONTE DE DADOS E DASHBOARDS (Cores Invertidas!)
 # ==========================================
 elif opcao_menu == "📊 Fonte de Dados":
     st.title("📊 Dashboards Analíticos")
@@ -220,7 +220,9 @@ elif opcao_menu == "📊 Fonte de Dados":
         st.subheader("Distribuição dos Níveis de Obesidade")
         ordem = ['Insufficient_Weight', 'Normal_Weight', 'Overweight_Level_I', 'Overweight_Level_II', 'Obesity_Type_I', 'Obesity_Type_II', 'Obesity_Type_III']
         fig3, ax3 = plt.subplots(figsize=(10,5))
-        sns.countplot(data=df, y='Obesity', order=ordem, palette='magma', ax=ax3)
+        
+        # ALTERADO: palette='magma_r' para colocar cores escuras nos níveis mais altos
+        sns.countplot(data=df, y='Obesity', order=ordem, palette='magma_r', ax=ax3)
         st.pyplot(fig3)
         
         with st.expander("Ver Tabela de Dados Original (CSV)"):
@@ -287,7 +289,6 @@ elif opcao_menu == "⚙️ Pipeline Machine Learning":
                 st.success(f"✅ Modelo re-treinado com sucesso! (Base de {len(df)} pacientes mantida intacta)")
                 st.metric("Acurácia do Novo Modelo no Teste", f"{acuracia * 100:.2f}%")
                 
-                # Força a atualização do estado global do Streamlit
                 st.rerun()
             except Exception as e:
                 st.error(f"Ocorreu um erro durante o treinamento: {e}")
