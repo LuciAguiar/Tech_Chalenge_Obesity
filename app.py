@@ -12,23 +12,80 @@ import os
 st.set_page_config(page_title="Tech Challenge 4 - Obesidade", page_icon="🩺", layout="wide")
 
 # ==========================================
-# 2. CARREGAMENTO DE DADOS E MODELOS (Cache)
+# 2. INICIALIZAÇÃO E CARREGAMENTO INTELIGENTE (Auto-Treino se faltar arquivo)
 # ==========================================
 @st.cache_resource
 def carregar_arquivos():
-    # O Streamlit lê diretamente do repositório do GitHub graças ao caminho relativo
-    modelo = joblib.load('modelo_obesidade.pkl')
-    le = joblib.load('label_encoder.pkl')
-    colunas = joblib.load('colunas_modelo.pkl')
-    return modelo, le, colunas
+    nome_modelo = 'modelo_obesidade.pkl'
+    nome_encoder = 'label_encoder.pkl'
+    nome_colunas = 'colunas_modelo.pkl'
+    
+    # Se os três arquivos existirem, carrega direto (Início Instantâneo)
+    if os.path.exists(nome_modelo) and os.path.exists(nome_encoder) and os.path.exists(nome_colunas):
+        modelo = joblib.load(nome_modelo)
+        le = joblib.load(nome_encoder)
+        colunas = joblib.load(nome_colunas)
+        return modelo, le, colunas
+    
+    # Fallback de Segurança: Se faltar algum arquivo, treina automaticamente na inicialização
+    else:
+        import numpy as np
+        from sklearn.model_selection import train_test_split
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.preprocessing import LabelEncoder
+        
+        # Leitura com o tratamento de ponto e vírgula e encoding correto
+        df = pd.read_csv('Obesity.csv', dtype=str, sep=';', encoding='latin1')
+        df.columns = df.columns.str.strip()
+        
+        # Aplicação da lógica de Winsorização/Clip homologada no Colab (73.50% acurácia)
+        idade_num = pd.to_numeric(df['Age'].str.split('.').str[0], errors='coerce')
+        df['Age'] = idade_num.clip(lower=14, upper=61).fillna(idade_num.median())
+
+        def limpar_categorica_clip(coluna_nome, limite_inf, limite_sup):
+            num = pd.to_numeric(df[coluna_nome], errors='coerce').round()
+            num_clipado = num.clip(lower=limite_inf, upper=limite_sup)
+            return num_clipado.fillna(num_clipado.mode()[0])
+
+        df['FCVC'] = limpar_categorica_clip('FCVC', 1, 3)
+        df['NCP']  = limpar_categorica_clip('NCP', 1, 4)
+        df['CH2O'] = limpar_categorica_clip('CH2O', 1, 3)
+        df['FAF']  = limpar_categorica_clip('FAF', 0, 3)   
+        df['TUE']  = limpar_categorica_clip('TUE', 0, 2)
+        
+        colunas_inteiras = ['Age', 'FCVC', 'NCP', 'CH2O', 'FAF', 'TUE']
+        for coluna in colunas_inteiras:
+            df[coluna] = df[coluna].astype('Int64')
+
+        df = df.fillna(df.mode().iloc[0]) 
+        
+        X = df.drop(['Obesity', 'Height', 'Weight'], axis=1)
+        y = df['Obesity']
+        
+        X_num = pd.get_dummies(X, drop_first=True)
+        le_novo = LabelEncoder()
+        y_num = le_novo.fit_transform(y)
+        
+        X_treino, X_teste, y_treino, y_teste = train_test_split(X_num, y_num, test_size=0.3, random_state=42)
+        
+        modelo_rf_novo = RandomForestClassifier(random_state=42)
+        modelo_rf_novo.fit(X_treino, y_treino)
+        
+        # Salva os arquivos para os próximos carregamentos serem instantâneos
+        joblib.dump(modelo_rf_novo, nome_modelo)
+        joblib.dump(le_novo, nome_encoder)
+        joblib.dump(list(X_treino.columns), nome_colunas)
+        
+        return modelo_rf_novo, le_novo, list(X_treino.columns)
 
 @st.cache_data
 def carregar_dados():
-    # Lê a base original
     df = pd.read_csv('Obesity.csv', sep=';', encoding='latin1')
     df.columns = df.columns.str.strip()
     return df
-    modelo_rf, le, colunas_modelo = carregar_arquivos()
+
+# Garante que as variáveis globais do modelo estejam prontas assim que o app abre
+modelo_rf, le, colunas_modelo = carregar_arquivos()
 
 # ==========================================
 # 3. MENU LATERAL (SIDEBAR)
@@ -86,7 +143,7 @@ if opcao_menu == "🔮 Análise Preditiva":
         faf_pt = st.selectbox("Atividade Física Semanal", ["0 - Nenhuma", "1 - 1 a 2 dias", "2 - 3 a 4 dias", "3 - 5 ou mais dias"], index=1)
         
     with col4:
-        tue_pt = st.selectbox("Tempo diário em telas/dispositivos", ["0 - Até 2 horas", "1 - De 3 a 5 horas", "2 - Mais de 5 horas"], index=1)
+        tue_pt = st.selectbox("Tempo diário em telas/dispositivos", ["0 - Até 2 hours", "1 - De 3 a 5 horas", "2 - Mais de 5 horas"], index=1)
         calc_pt = st.selectbox("Consumo de bebida alcoólica", ['Não', 'Às vezes', 'Frequentemente', 'Sempre'], index=1)
         mtrans_pt = st.selectbox("Meio de transporte habitual", ['Automóvel', 'Moto', 'Bicicleta', 'Transporte Público', 'A pé'], index=3)
 
@@ -176,10 +233,10 @@ elif opcao_menu == "📊 Fonte de Dados":
 # ==========================================
 elif opcao_menu == "⚙️ Pipeline Machine Learning":
     st.title("⚙️ Pipeline de Machine Learning")
-    st.markdown("Abaixo, pode executar todo o pipeline de treino da Inteligência Artificial em tempo real.")
+    st.markdown("Abaixo, pode forçar o re-treinamento manual da Inteligência Artificial em tempo real se novos dados forem inseridos no CSV.")
 
-    if st.button("🚀 Iniciar Treinamento do Modelo", type="primary"):
-        with st.spinner("A ler dados, a limpar ruídos e a treinar a Inteligência Artificial..."):
+    if st.button("🚀 Forçar Re-treinamento do Modelo", type="primary"):
+        with st.spinner("A ler dados, a aplicar Winsorização e a re-treinar a Inteligência Artificial..."):
             import numpy as np
             from sklearn.model_selection import train_test_split
             from sklearn.ensemble import RandomForestClassifier
@@ -188,23 +245,29 @@ elif opcao_menu == "⚙️ Pipeline Machine Learning":
             try:
                 df = pd.read_csv('Obesity.csv', dtype=str, sep=';', encoding='latin1')
                 df.columns = df.columns.str.strip()
-                idade_num = pd.to_numeric(df['Age'].str.split('.').str[0], errors='coerce')
-                df['Age'] = np.select([(idade_num >= 14) & (idade_num <= 61)], [idade_num], default=np.nan)
-
-                def limpar_categorica(coluna_nome, limite_inf, limite_sup):
-                    num = pd.to_numeric(df[coluna_nome], errors='coerce').round()
-                    condicao = (num >= limite_inf) & (num <= limite_sup)
-                    return np.select([condicao], [num], default=np.nan)
-
-                df['FCVC'] = limpar_categorica('FCVC', 1, 3)
-                df['NCP']  = limpar_categorica('NCP', 1, 4)
-                df['CH2O'] = limpar_categorica('CH2O', 1, 3)
-                df['FAF']  = limpar_categorica('FAF', 0, 3)   
-                df['TUE']  = limpar_categorica('TUE', 0, 2)
                 
-                df_limpo = df.copy().dropna()
-                X = df_limpo.drop(['Obesity', 'Height', 'Weight'], axis=1)
-                y = df_limpo['Obesity']
+                idade_num = pd.to_numeric(df['Age'].str.split('.').str[0], errors='coerce')
+                df['Age'] = idade_num.clip(lower=14, upper=61).fillna(idade_num.median())
+
+                def limpar_categorica_clip(coluna_nome, limite_inf, limite_sup):
+                    num = pd.to_numeric(df[coluna_nome], errors='coerce').round()
+                    num_clipado = num.clip(lower=limite_inf, upper=limite_sup)
+                    return num_clipado.fillna(num_clipado.mode()[0])
+
+                df['FCVC'] = limpar_categorica_clip('FCVC', 1, 3)
+                df['NCP']  = limpar_categorica_clip('NCP', 1, 4)
+                df['CH2O'] = limpar_categorica_clip('CH2O', 1, 3)
+                df['FAF']  = limpar_categorica_clip('FAF', 0, 3)   
+                df['TUE']  = limpar_categorica_clip('TUE', 0, 2)
+                
+                colunas_inteiras = ['Age', 'FCVC', 'NCP', 'CH2O', 'FAF', 'TUE']
+                for coluna in colunas_inteiras:
+                    df[coluna] = df[coluna].astype('Int64')
+
+                df = df.fillna(df.mode().iloc[0]) 
+                
+                X = df.drop(['Obesity', 'Height', 'Weight'], axis=1)
+                y = df['Obesity']
                 
                 X_num = pd.get_dummies(X, drop_first=True)
                 le_novo = LabelEncoder()
@@ -221,8 +284,11 @@ elif opcao_menu == "⚙️ Pipeline Machine Learning":
                 
                 acuracia = modelo_rf_novo.score(X_teste, y_teste)
                 
-                st.success("✅ Modelo treinado e atualizado com sucesso!")
+                st.success(f"✅ Modelo re-treinado com sucesso! (Base de {len(df)} pacientes mantida intacta)")
                 st.metric("Acurácia do Novo Modelo no Teste", f"{acuracia * 100:.2f}%")
+                
+                # Força a atualização do estado global do Streamlit
+                st.rerun()
             except Exception as e:
                 st.error(f"Ocorreu um erro durante o treinamento: {e}")
 
@@ -233,7 +299,6 @@ elif opcao_menu == "📖 Story Telling":
     st.title("📖 Story Telling do Projeto")
     st.markdown("Consulte abaixo a documentação completa e o dicionário de dados (Tech Challenge 4).")
     
-    # ATUALIZADO PARA O NOME DO SEU ARQUIVO
     caminho_pdf = "dicionario_obesity_fiap_tc4.pdf"
     
     if os.path.exists(caminho_pdf):
