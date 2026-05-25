@@ -190,13 +190,15 @@ if opcao_menu == "🔮 Análise Preditiva":
             st.dataframe(df_paciente_num)
 
 # ==========================================
-# PÁGINA 2: FONTE DE DADOS E DASHBOARDS 
+# PÁGINA 2: FONTE DE DADOS E DASHBOARDS (Com Percentuais!)
 # ==========================================
 elif opcao_menu == "📊 Fonte de Dados":
     st.title("📊 Dashboards Analíticos")
     st.markdown("Exploração da base de dados original utilizada para treinar a Inteligência Artificial.")
     try:
         df = carregar_dados()
+        total_amostra = len(df)
+        
         col_graf1, col_graf2 = st.columns(2)
         with col_graf1:
             st.subheader("Distribuição por Gênero")
@@ -215,111 +217,6 @@ elif opcao_menu == "📊 Fonte de Dados":
         ordem = ['Insufficient_Weight', 'Normal_Weight', 'Overweight_Level_I', 'Overweight_Level_II', 'Obesity_Type_I', 'Obesity_Type_II', 'Obesity_Type_III']
         fig3, ax3 = plt.subplots(figsize=(10,5))
         
-        # 1. Cria o gráfico invertendo as cores (magma_r)
         sns.countplot(data=df, y='Obesity', order=ordem, palette='magma_r', ax=ax3)
         
-        # 2. Adiciona o número exato no final de cada barra
-        for container in ax3.containers:
-            ax3.bar_label(container, padding=5, fontsize=10, color='black', weight='bold')
-            
-        # 3. Altera o texto do eixo X para mostrar a quantidade total da amostra
-        ax3.set_xlabel(f"Quantidade de Pacientes (Total da Amostra: {len(df)})", fontsize=11, labelpad=10)
-        ax3.set_ylabel("") # Remove o label lateral para deixar mais limpo
-        
-        sns.despine() # Remove as bordas superior e direita (deixa mais elegante)
-        
-        st.pyplot(fig3)
-        
-        with st.expander("Ver Tabela de Dados Original (CSV)"):
-            st.dataframe(df)
-    except FileNotFoundError:
-        st.error("⚠️ Ficheiro 'Obesity.csv' não encontrado. Certifique-se de que está na mesma pasta no GitHub.")
-
-# ==========================================
-# PÁGINA 3: PIPELINE MACHINE LEARNING
-# ==========================================
-elif opcao_menu == "⚙️ Pipeline Machine Learning":
-    st.title("⚙️ Pipeline de Machine Learning")
-    st.markdown("Abaixo, pode forçar o re-treinamento manual da Inteligência Artificial em tempo real se novos dados forem inseridos no CSV.")
-
-    if st.button("🚀 Forçar Re-treinamento do Modelo", type="primary"):
-        with st.spinner("A ler dados, a aplicar Winsorização e a re-treinar a Inteligência Artificial..."):
-            import numpy as np
-            from sklearn.model_selection import train_test_split
-            from sklearn.ensemble import RandomForestClassifier
-            from sklearn.preprocessing import LabelEncoder
-            
-            try:
-                df = pd.read_csv('Obesity.csv', dtype=str, sep=';', encoding='latin1')
-                df.columns = df.columns.str.strip()
-                
-                idade_num = pd.to_numeric(df['Age'].str.split('.').str[0], errors='coerce')
-                df['Age'] = idade_num.clip(lower=14, upper=61).fillna(idade_num.median())
-
-                def limpar_categorica_clip(coluna_nome, limite_inf, limite_sup):
-                    num = pd.to_numeric(df[coluna_nome], errors='coerce').round()
-                    num_clipado = num.clip(lower=limite_inf, upper=limite_sup)
-                    return num_clipado.fillna(num_clipado.mode()[0])
-
-                df['FCVC'] = limpar_categorica_clip('FCVC', 1, 3)
-                df['NCP']  = limpar_categorica_clip('NCP', 1, 4)
-                df['CH2O'] = limpar_categorica_clip('CH2O', 1, 3)
-                df['FAF']  = limpar_categorica_clip('FAF', 0, 3)   
-                df['TUE']  = limpar_categorica_clip('TUE', 0, 2)
-                
-                colunas_inteiras = ['Age', 'FCVC', 'NCP', 'CH2O', 'FAF', 'TUE']
-                for coluna in colunas_inteiras:
-                    df[coluna] = df[coluna].astype('Int64')
-
-                df = df.fillna(df.mode().iloc[0]) 
-                
-                X = df.drop(['Obesity', 'Height', 'Weight'], axis=1)
-                y = df['Obesity']
-                
-                X_num = pd.get_dummies(X, drop_first=True)
-                le_novo = LabelEncoder()
-                y_num = le_novo.fit_transform(y)
-                
-                X_treino, X_teste, y_treino, y_teste = train_test_split(X_num, y_num, test_size=0.3, random_state=42)
-                
-                modelo_rf_novo = RandomForestClassifier(random_state=42)
-                modelo_rf_novo.fit(X_treino, y_treino)
-                
-                joblib.dump(modelo_rf_novo, 'modelo_obesidade.pkl')
-                joblib.dump(le_novo, 'label_encoder.pkl')
-                joblib.dump(list(X_treino.columns), 'colunas_modelo.pkl')
-                
-                acuracia = modelo_rf_novo.score(X_teste, y_teste)
-                
-                st.success(f"✅ Modelo re-treinado com sucesso! (Base de {len(df)} pacientes mantida intacta)")
-                st.metric("Acurácia do Novo Modelo no Teste", f"{acuracia * 100:.2f}%")
-                
-                st.rerun()
-            except Exception as e:
-                st.error(f"Ocorreu um erro durante o treinamento: {e}")
-
-# ==========================================
-# PÁGINA 4: STORY TELLING (PDF)
-# ==========================================
-elif opcao_menu == "📖 Story Telling":
-    st.title("📖 Story Telling do Projeto")
-    st.markdown("Consulte abaixo a documentação completa e o dicionário de dados (Tech Challenge 4).")
-    
-    caminho_pdf = "dicionario_obesity_fiap_tc4.pdf"
-    
-    if os.path.exists(caminho_pdf):
-        with open(caminho_pdf, "rb") as f:
-            base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-        
-        pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800" type="application/pdf"></iframe>'
-        st.markdown(pdf_display, unsafe_allow_html=True)
-        
-        with open(caminho_pdf, "rb") as f:
-            st.download_button(
-                label="📥 Fazer Download do PDF",
-                data=f,
-                file_name=caminho_pdf,
-                mime="application/pdf"
-            )
-    else:
-        st.error(f"⚠️ Ficheiro '{caminho_pdf}' não encontrado. Por favor, coloque o seu PDF na mesma pasta do GitHub.")
+        # Lógica para adicionar Quantidade e Percentual em cada
