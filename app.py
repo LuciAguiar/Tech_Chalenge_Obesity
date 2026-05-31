@@ -12,83 +12,75 @@ import os
 st.set_page_config(page_title="Tech Challenge 4 - Obesidade", page_icon="🩺", layout="wide")
 
 # ==========================================
-# 2. INICIALIZAÇÃO E CARREGAMENTO INTELIGENTE (Auto-Treino se faltar arquivo)
+# 2. INICIALIZAÇÃO E CARREGAMENTO INTELIGENTE 
 # ==========================================
 @st.cache_resource
 def carregar_arquivos():
     nome_modelo = 'modelo_obesidade.pkl'
-    nome_encoder = 'label_encoder.pkl'
+    nome_encoder_y = 'label_encoder.pkl'
+    nome_encoders_x = 'feature_encoders.pkl' 
     nome_colunas = 'colunas_modelo.pkl'
     
-    if os.path.exists(nome_modelo) and os.path.exists(nome_encoder) and os.path.exists(nome_colunas):
+    if os.path.exists(nome_modelo) and os.path.exists(nome_encoder_y) and os.path.exists(nome_encoders_x) and os.path.exists(nome_colunas):
         modelo = joblib.load(nome_modelo)
-        le = joblib.load(nome_encoder)
+        le_y = joblib.load(nome_encoder_y)
+        le_dict = joblib.load(nome_encoders_x)
         colunas = joblib.load(nome_colunas)
-        return modelo, le, colunas
+        return modelo, le_y, le_dict, colunas
     
     else:
-        import numpy as np
         from sklearn.model_selection import train_test_split
         from sklearn.ensemble import RandomForestClassifier
         from sklearn.preprocessing import LabelEncoder
         
-        df = pd.read_csv('Obesity.csv', dtype=str, sep=';', encoding='latin1')
-        df.columns = df.columns.str.strip()
+        url = 'https://raw.githubusercontent.com/LuciAguiar/Tech_Chalenge_Obesity/refs/heads/main/Obesity_Limpo.csv'
         
-        idade_num = pd.to_numeric(df['Age'].str.split('.').str[0], errors='coerce')
-        df['Age'] = idade_num.clip(lower=14, upper=61).fillna(idade_num.median())
-
-        def limpar_categorica_clip(coluna_nome, limite_inf, limite_sup):
-            num = pd.to_numeric(df[coluna_nome], errors='coerce').round()
-            num_clipado = num.clip(lower=limite_inf, upper=limite_sup)
-            return num_clipado.fillna(num_clipado.mode()[0])
-
-        df['FCVC'] = limpar_categorica_clip('FCVC', 1, 3)
-        df['NCP']  = limpar_categorica_clip('NCP', 1, 4)
-        df['CH2O'] = limpar_categorica_clip('CH2O', 1, 3)
-        df['FAF']  = limpar_categorica_clip('FAF', 0, 3)   
-        df['TUE']  = limpar_categorica_clip('TUE', 0, 2)
+        df = pd.read_csv(url, sep=',', decimal='.')
         
-        colunas_inteiras = ['Age', 'FCVC', 'NCP', 'CH2O', 'FAF', 'TUE']
-        for coluna in colunas_inteiras:
-            df[coluna] = df[coluna].astype('Int64')
-
-        df = df.fillna(df.mode().iloc[0]) 
-        
-        X = df.drop(['Obesity', 'Height', 'Weight'], axis=1)
+        X = df.drop(columns=['Weight', 'Height', 'Obesity'])
         y = df['Obesity']
         
-        X_num = pd.get_dummies(X, drop_first=True)
-        le_novo = LabelEncoder()
-        y_num = le_novo.fit_transform(y)
+        le_dict = {}
+        for col in X.select_dtypes(include=['object']).columns:
+            le = LabelEncoder()
+            X[col] = le.fit_transform(X[col].astype(str))
+            le_dict[col] = le
+
+        le_y = LabelEncoder()
+        y_encoded = le_y.fit_transform(y)
         
-        X_treino, X_teste, y_treino, y_teste = train_test_split(X_num, y_num, test_size=0.3, random_state=42)
+        X_treino, X_teste, y_treino, y_teste = train_test_split(
+            X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
+        )
         
-        modelo_rf_novo = RandomForestClassifier(random_state=42)
+        modelo_rf_novo = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
         modelo_rf_novo.fit(X_treino, y_treino)
         
         joblib.dump(modelo_rf_novo, nome_modelo)
-        joblib.dump(le_novo, nome_encoder)
-        joblib.dump(list(X_treino.columns), nome_colunas)
+        joblib.dump(le_y, nome_encoder_y)
+        joblib.dump(le_dict, nome_encoders_x)
+        joblib.dump(list(X.columns), nome_colunas)
         
-        return modelo_rf_novo, le_novo, list(X_treino.columns)
+        return modelo_rf_novo, le_y, le_dict, list(X.columns)
 
 @st.cache_data
 def carregar_dados():
-    df = pd.read_csv('Obesity.csv', sep=';', encoding='latin1')
-    df.columns = df.columns.str.strip()
+    url = 'https://raw.githubusercontent.com/LuciAguiar/Tech_Chalenge_Obesity/refs/heads/main/Obesity_Limpo.csv'
+    df = pd.read_csv(url, sep=',', decimal='.')
     return df
 
-modelo_rf, le, colunas_modelo = carregar_arquivos()
+modelo_rf, le_y, le_dict, colunas_modelo = carregar_arquivos()
 
 # ==========================================
 # 3. MENU LATERAL (SIDEBAR)
 # ==========================================
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3004/3004451.png", width=100)
 st.sidebar.title("Menu de Navegação")
+
+# ALTERAÇÃO AQUI: "Documentação Executiva" em vez de "Story Telling"
 opcao_menu = st.sidebar.radio(
     "Selecione a página:",
-    ["🔮 Análise Preditiva", "📊 Fonte de Dados", "⚙️ Pipeline Machine Learning", "📖 Story Telling"]
+    ["🔮 Análise Preditiva", "📊 Fonte de Dados", "⚙️ Pipeline Machine Learning", "📖 Documentação Executiva"]
 )
 
 st.sidebar.markdown("---")
@@ -142,29 +134,31 @@ if opcao_menu == "🔮 Análise Preditiva":
         mtrans_pt = st.selectbox("Meio de transporte habitual", ['Automóvel', 'Moto', 'Bicicleta', 'Transporte Público', 'A pé'], index=3)
 
     if st.button("🔮 Gerar Diagnóstico Preditivo", type="primary"):
-        df_paciente_num = pd.DataFrame(0, index=[0], columns=colunas_modelo)
-        
-        df_paciente_num['Age'] = age
-        df_paciente_num['FCVC'] = int(fcvc_pt[0])
-        df_paciente_num['NCP'] = int(ncp_pt[0])
-        df_paciente_num['CH2O'] = int(ch2o_pt[0])
-        df_paciente_num['FAF'] = int(faf_pt[0])
-        df_paciente_num['TUE'] = int(tue_pt[0])
-        
-        categorias_selecionadas = {
-            'Gender': map_genero[gender_pt], 'family_history': map_sim_nao[family_history_pt],
-            'FAVC': map_sim_nao[favc_pt], 'CAEC': map_freq[caec_pt],
-            'SMOKE': map_sim_nao[smoke_pt], 'SCC': map_sim_nao[scc_pt],
-            'CALC': map_freq[calc_pt], 'MTRANS': map_transporte[mtrans_pt]
+        input_data = {
+            'Gender': map_genero[gender_pt],
+            'Age': age,
+            'family_history': map_sim_nao[family_history_pt],
+            'FAVC': map_sim_nao[favc_pt],
+            'FCVC': int(fcvc_pt[0]),
+            'NCP': int(ncp_pt[0]),
+            'CAEC': map_freq[caec_pt],
+            'SMOKE': map_sim_nao[smoke_pt],
+            'CH2O': int(ch2o_pt[0]),
+            'SCC': map_sim_nao[scc_pt],
+            'FAF': int(faf_pt[0]),
+            'TUE': int(tue_pt[0]),
+            'CALC': map_freq[calc_pt],
+            'MTRANS': map_transporte[mtrans_pt]
         }
         
-        for prefixo, valor in categorias_selecionadas.items():
-            nome_coluna_esperada = f"{prefixo}_{valor}"
-            if nome_coluna_esperada in colunas_modelo:
-                df_paciente_num[nome_coluna_esperada] = 1
+        df_paciente = pd.DataFrame([input_data])[colunas_modelo]
+        
+        for col, le_feat in le_dict.items():
+            if col in df_paciente.columns:
+                df_paciente[col] = le_feat.transform(df_paciente[col].astype(str))
 
-        previsao_num = modelo_rf.predict(df_paciente_num)[0]
-        diagnostico_ingles = le.inverse_transform([previsao_num])[0]
+        previsao_num = modelo_rf.predict(df_paciente)[0]
+        diagnostico_ingles = le_y.inverse_transform([previsao_num])[0]
         diagnostico_final = map_diagnostico[diagnostico_ingles]
         
         st.success("Análise concluída!")
@@ -182,118 +176,184 @@ if opcao_menu == "🔮 Análise Preditiva":
         st.write("---")
         with st.expander("🔍 Verifique os dados enviados para o modelo preditivo"):
             st.subheader("🛠️ Modo de Depuração (Debug)")
-            debug_visual = {"Idade": age, "FCVC": int(fcvc_pt[0]), "NCP": int(ncp_pt[0]), "CH2O": int(ch2o_pt[0]), "FAF": int(faf_pt[0]), "TUE": int(tue_pt[0])}
-            debug_visual.update(categorias_selecionadas)
-            st.write("**1. As 14 variáveis capturadas do formulário:**")
-            st.json(debug_visual)
-            st.write("**2. Tabela final processada enviada ao modelo:**")
-            st.dataframe(df_paciente_num)
+            st.write("**1. Variáveis capturadas do formulário:**")
+            st.json(input_data)
+            st.write("**2. Tabela final processada enviada ao modelo (Label Encoded):**")
+            st.dataframe(df_paciente)
 
 # ==========================================
-# PÁGINA 2: FONTE DE DADOS E DASHBOARDS (Com Percentuais!)
+# PÁGINA 2: FONTE DE DADOS E DASHBOARDS
 # ==========================================
 elif opcao_menu == "📊 Fonte de Dados":
     st.title("📊 Dashboards Analíticos")
-    st.markdown("Exploração da base de dados original utilizada para treinar a Inteligência Artificial.")
+    st.markdown("Exploração da base de dados limpa oficial utilizada para treinar a Inteligência Artificial.")
+    
+    st.markdown("""
+    <style>
+    div[data-testid="stMetric"] {
+        background-color: #f4f4f4;
+        border-radius: 8px;
+        padding: 8px 12px;
+        box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.08);
+        border: 1px solid #e6e6e6;
+    }
+    div[data-testid="stMetricValue"] > div {
+        font-size: 1.4rem !important; 
+    }
+    div[data-testid="stMetricLabel"] p {
+        font-size: 0.85rem !important; 
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     try:
         df = carregar_dados()
         total_amostra = len(df)
         
+        col_smoke = next((col for col in df.columns if 'SMOKE' in str(col).strip().upper()), None)
+        col_favc = next((col for col in df.columns if 'FAVC' in str(col).strip().upper()), None)
+        
+        def contar_positivos(coluna):
+            if coluna is None:
+                return 0
+            valores_limpos = df[coluna].astype(str).str.strip().str.lower().str.replace('.0', '', regex=False)
+            return valores_limpos.isin(['yes', '1', 'sim', 'true', 'y', 's']).sum()
+
+        total_fumantes = contar_positivos(col_smoke)
+        total_favc = contar_positivos(col_favc)
+        
+        col_metric1, col_metric2, col_metric3 = st.columns(3)
+        with col_metric1:
+            st.metric(label="📊 Tamanho da Amostra", value=total_amostra)
+        with col_metric2:
+            st.metric(label="🚬 Total de Fumantes", value=total_fumantes)
+        with col_metric3:
+            st.metric(label="🍔 Consumo alimentos calóricos", value=total_favc)
+                    
+        st.markdown("---")
+        
         col_graf1, col_graf2 = st.columns(2)
         with col_graf1:
-            st.subheader("Distribuição por Gênero")
-            fig1, ax1 = plt.subplots(figsize=(6,4))
-            sns.countplot(data=df, x='Gender', palette=['#ff9ff3', '#3498db'], ax=ax1)
+            st.markdown("#### Distribuição por Gênero")
+            fig1, ax1 = plt.subplots(figsize=(4, 2.8)) 
+            
+            sns.countplot(data=df, x='Gender', order=['Female', 'Male'], palette=['#ff9ff3', '#3498db'], ax=ax1)
+            ax1.set_xlabel("Gênero", fontsize=8)
+            ax1.set_ylabel("") 
+            ax1.set_xticklabels(['Feminino', 'Masculino'], fontsize=8) 
+            ax1.tick_params(axis='y', labelsize=8)
+            sns.despine()
             st.pyplot(fig1)
 
         with col_graf2:
-            st.subheader("Histórico Familiar")
-            fig2, ax2 = plt.subplots(figsize=(6,4))
-            sns.countplot(data=df, x='family_history', palette=['#e74c3c', '#2ecc71'], ax=ax2)
+            st.markdown("#### Histórico Familiar")
+            fig2, ax2 = plt.subplots(figsize=(4, 2.8))
+            
+            sns.countplot(data=df, x='family_history', order=['yes', 'no'], palette=['#e74c3c', '#2ecc71'], ax=ax2)
+            ax2.set_xlabel("Histórico Familiar de Excesso de Peso", fontsize=8)
+            ax2.set_ylabel("") 
+            ax2.set_xticklabels(['Sim', 'Não'], fontsize=8) 
+            ax2.tick_params(axis='y', labelsize=8)
+            sns.despine()
             st.pyplot(fig2)
             
         st.markdown("---")
-        st.subheader("Distribuição dos Níveis de Obesidade")
+        st.markdown("#### Distribuição dos Níveis de Obesidade")
         ordem = ['Insufficient_Weight', 'Normal_Weight', 'Overweight_Level_I', 'Overweight_Level_II', 'Obesity_Type_I', 'Obesity_Type_II', 'Obesity_Type_III']
-        fig3, ax3 = plt.subplots(figsize=(10,5))
         
+        fig3, ax3 = plt.subplots(figsize=(8, 3.5))
         sns.countplot(data=df, y='Obesity', order=ordem, palette='magma_r', ax=ax3)
         
-        # Lógica para adicionar Quantidade e Percentual em cada barra
         for container in ax3.containers:
-            # Cria uma lista de textos personalizados com o formato "123 (5.8%)"
             labels_personalizadas = [f"{int(barra.get_width())} ({(barra.get_width() / total_amostra) * 100:.1f}%)" for barra in container]
-            ax3.bar_label(container, labels=labels_personalizadas, padding=5, fontsize=10, color='black', weight='bold')
+            ax3.bar_label(container, labels=labels_personalizadas, padding=5, fontsize=8, color='black', weight='bold')
             
-        ax3.set_xlabel(f"Quantidade de Pacientes (Total da Amostra: {total_amostra})", fontsize=11, labelpad=10)
+        ax3.set_xlabel(f"Quantidade de Pacientes (Total da Amostra: {total_amostra})", fontsize=9, labelpad=8)
         ax3.set_ylabel("") 
-        
+        ax3.set_yticklabels(['Abaixo do Peso', 'Peso Normal', 'Sobrepeso (Nível I)', 'Sobrepeso (Nível II)', 'Obesidade (Tipo I)', 'Obesidade (Tipo II)', 'Obesidade (Tipo III)'], fontsize=8)
+        ax3.tick_params(axis='x', labelsize=8)
         sns.despine() 
-        
         st.pyplot(fig3)
         
-        with st.expander("Ver Tabela de Dados Original (CSV)"):
+        st.markdown("---")
+        st.markdown("#### Grau de Obesidade vs Histórico Familiar")
+        fig4, ax4 = plt.subplots(figsize=(8, 4))
+        
+        sns.countplot(data=df, y='Obesity', hue='family_history', order=ordem, hue_order=['yes', 'no'], palette=['#e74c3c', '#2ecc71'], ax=ax4)
+        
+        ax4.set_yticklabels(['Abaixo do Peso', 'Peso Normal', 'Sobrepeso (Nível I)', 'Sobrepeso (Nível II)', 'Obesidade (Tipo I)', 'Obesidade (Tipo II)', 'Obesidade (Tipo III)'], fontsize=8)
+        ax4.set_xlabel("Quantidade de Pacientes", fontsize=9, labelpad=8)
+        ax4.set_ylabel("")
+        ax4.tick_params(axis='x', labelsize=8)
+        
+        for container in ax4.containers:
+            ax4.bar_label(container, padding=5, fontsize=7, color='black')
+            
+        legenda = ax4.get_legend()
+        if legenda:
+            legenda.set_title("Histórico Familiar", prop={'size': 8})
+            for texto in legenda.texts:
+                texto.set_fontsize(8)
+                if texto.get_text() == 'yes':
+                    texto.set_text('Sim')
+                elif texto.get_text() == 'no':
+                    texto.set_text('Não')
+
+        sns.despine()
+        st.pyplot(fig4)
+        
+        with st.expander("Ver Tabela de Dados Original (CSV Limpo)"):
             st.dataframe(df)
-    except FileNotFoundError:
-        st.error("⚠️ Ficheiro 'Obesity.csv' não encontrado. Certifique-se de que está na mesma pasta no GitHub.")
+    except Exception as e:
+        st.error(f"⚠️ Erro ao carregar os dados. Verifique a conexão de internet ou a URL do GitHub. Erro: {e}")
 
 # ==========================================
 # PÁGINA 3: PIPELINE MACHINE LEARNING
 # ==========================================
 elif opcao_menu == "⚙️ Pipeline Machine Learning":
     st.title("⚙️ Pipeline de Machine Learning")
-    st.markdown("Abaixo, pode forçar o re-treinamento manual da Inteligência Artificial em tempo real se novos dados forem inseridos no CSV.")
+    st.markdown("Abaixo, pode forçar o re-treinamento manual da Inteligência Artificial usando a nova lógica de Label Encoding com 80.38% de precisão.")
 
     if st.button("🚀 Forçar Re-treinamento do Modelo", type="primary"):
-        with st.spinner("A ler dados, a aplicar Winsorização e a re-treinar a Inteligência Artificial..."):
-            import numpy as np
+        with st.spinner("A ler dados limpos, a aplicar Label Encoding e a re-treinar a IA..."):
             from sklearn.model_selection import train_test_split
             from sklearn.ensemble import RandomForestClassifier
             from sklearn.preprocessing import LabelEncoder
+            from sklearn.metrics import accuracy_score
             
             try:
-                df = pd.read_csv('Obesity.csv', dtype=str, sep=';', encoding='latin1')
-                df.columns = df.columns.str.strip()
+                url = 'https://raw.githubusercontent.com/LuciAguiar/Tech_Chalenge_Obesity/refs/heads/main/Obesity_Limpo.csv'
                 
-                idade_num = pd.to_numeric(df['Age'].str.split('.').str[0], errors='coerce')
-                df['Age'] = idade_num.clip(lower=14, upper=61).fillna(idade_num.median())
-
-                def limpar_categorica_clip(coluna_nome, limite_inf, limite_sup):
-                    num = pd.to_numeric(df[coluna_nome], errors='coerce').round()
-                    num_clipado = num.clip(lower=limite_inf, upper=limite_sup)
-                    return num_clipado.fillna(num_clipado.mode()[0])
-
-                df['FCVC'] = limpar_categorica_clip('FCVC', 1, 3)
-                df['NCP']  = limpar_categorica_clip('NCP', 1, 4)
-                df['CH2O'] = limpar_categorica_clip('CH2O', 1, 3)
-                df['FAF']  = limpar_categorica_clip('FAF', 0, 3)   
-                df['TUE']  = limpar_categorica_clip('TUE', 0, 2)
+                df = pd.read_csv(url, sep=',', decimal='.')
                 
-                colunas_inteiras = ['Age', 'FCVC', 'NCP', 'CH2O', 'FAF', 'TUE']
-                for coluna in colunas_inteiras:
-                    df[coluna] = df[coluna].astype('Int64')
-
-                df = df.fillna(df.mode().iloc[0]) 
-                
-                X = df.drop(['Obesity', 'Height', 'Weight'], axis=1)
+                X = df.drop(columns=['Weight', 'Height', 'Obesity'])
                 y = df['Obesity']
                 
-                X_num = pd.get_dummies(X, drop_first=True)
-                le_novo = LabelEncoder()
-                y_num = le_novo.fit_transform(y)
+                le_dict_novo = {}
+                for col in X.select_dtypes(include=['object']).columns:
+                    le = LabelEncoder()
+                    X[col] = le.fit_transform(X[col].astype(str))
+                    le_dict_novo[col] = le
+
+                le_y_novo = LabelEncoder()
+                y_encoded = le_y_novo.fit_transform(y)
                 
-                X_treino, X_teste, y_treino, y_teste = train_test_split(X_num, y_num, test_size=0.3, random_state=42)
+                X_treino, X_teste, y_treino, y_teste = train_test_split(
+                    X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
+                )
                 
-                modelo_rf_novo = RandomForestClassifier(random_state=42)
+                modelo_rf_novo = RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced')
                 modelo_rf_novo.fit(X_treino, y_treino)
                 
                 joblib.dump(modelo_rf_novo, 'modelo_obesidade.pkl')
-                joblib.dump(le_novo, 'label_encoder.pkl')
-                joblib.dump(list(X_treino.columns), 'colunas_modelo.pkl')
+                joblib.dump(le_y_novo, 'label_encoder.pkl')
+                joblib.dump(le_dict_novo, 'feature_encoders.pkl') 
+                joblib.dump(list(X.columns), 'colunas_modelo.pkl')
                 
-                acuracia = modelo_rf_novo.score(X_teste, y_teste)
+                previsoes = modelo_rf_novo.predict(X_teste)
+                acuracia = accuracy_score(y_teste, previsoes)
                 
-                st.success(f"✅ Modelo re-treinado com sucesso! (Base de {len(df)} pacientes mantida intacta)")
+                st.success(f"✅ Modelo re-treinado com sucesso usando a Lógica Avançada!")
                 st.metric("Acurácia do Novo Modelo no Teste", f"{acuracia * 100:.2f}%")
                 
                 st.rerun()
@@ -301,27 +361,40 @@ elif opcao_menu == "⚙️ Pipeline Machine Learning":
                 st.error(f"Ocorreu um erro durante o treinamento: {e}")
 
 # ==========================================
-# PÁGINA 4: STORY TELLING (PDF)
+# PÁGINA 4: DOCUMENTAÇÃO EXECUTIVA (PDF)
 # ==========================================
-elif opcao_menu == "📖 Story Telling":
-    st.title("📖 Story Telling do Projeto")
-    st.markdown("Consulte abaixo a documentação completa e o dicionário de dados (Tech Challenge 4).")
+# ALTERAÇÃO AQUI: Correspondência com o novo nome no menu
+elif opcao_menu == "📖 Documentação Executiva":
+    st.title("📖 Documentação Executiva do Projeto")
+    st.info("A redirecionar... O documento PDF deve abrir automaticamente numa nova aba do seu navegador.")
     
-    caminho_pdf = "dicionario_obesity_fiap_tc4.pdf"
+    url_pdf = "https://cdn.jsdelivr.net/gh/LuciAguiar/Tech_Chalenge_Obesity@main/Obesidade_AnaliseComportamental.pdf"
     
-    if os.path.exists(caminho_pdf):
-        with open(caminho_pdf, "rb") as f:
-            base64_pdf = base64.b64encode(f.read()).decode('utf-8')
-        
-        pdf_display = f'<iframe src="data:application/pdf;base64,{base64_pdf}" width="100%" height="800" type="application/pdf"></iframe>'
-        st.markdown(pdf_display, unsafe_allow_html=True)
-        
-        with open(caminho_pdf, "rb") as f:
-            st.download_button(
-                label="📥 Fazer Download do PDF",
-                data=f,
-                file_name=caminho_pdf,
-                mime="application/pdf"
-            )
-    else:
-        st.error(f"⚠️ Ficheiro '{caminho_pdf}' não encontrado. Por favor, coloque o seu PDF na mesma pasta do GitHub.")
+    import streamlit.components.v1 as components
+    components.html(
+        f"""
+        <script>
+            window.open('{url_pdf}', '_blank');
+        </script>
+        """,
+        height=0
+    )
+    
+    st.warning("⚠️ Se o seu navegador bloqueou a abertura automática (Bloqueador de Pop-ups), clique no botão abaixo:")
+    
+    st.markdown(
+        f'''
+        <a href="{url_pdf}" target="_blank" style="
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #FF4B4B;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 16px;
+            margin-top: 10px;
+        ">📄 Abrir PDF Diretamente no Navegador</a>
+        ''',
+        unsafe_allow_html=True
+    )
