@@ -77,10 +77,10 @@ modelo_rf, le_y, le_dict, colunas_modelo = carregar_arquivos()
 st.sidebar.image("https://cdn-icons-png.flaticon.com/512/3004/3004451.png", width=100)
 st.sidebar.title("Menu de Navegação")
 
-# ALTERAÇÃO AQUI: "Documentação Executiva" em vez de "Story Telling"
+# ALTERAÇÃO AQUI: "Dashboards" em vez de "Fonte de Dados"
 opcao_menu = st.sidebar.radio(
     "Selecione a página:",
-    ["🔮 Análise Preditiva", "📊 Fonte de Dados", "⚙️ Pipeline Machine Learning", "📖 Documentação Executiva"]
+    ["🔮 Análise Preditiva", "📊 Dashboards", "⚙️ Pipeline Machine Learning", "📖 Documentação Executiva"]
 )
 
 st.sidebar.markdown("---")
@@ -103,7 +103,7 @@ if opcao_menu == "🔮 Análise Preditiva":
     }
 
     st.title("🩺 Sistema Preditivo de Grau de Obesidade")
-    st.markdown("Preencha os dados do paciente abaixo para obter a previsão comportamental do modelo.")
+    st.markdown("Preencha os dados do paciente abaixo para obter a previsão do estado clínico.")
 
     col1, col2 = st.columns(2)
 
@@ -182,11 +182,12 @@ if opcao_menu == "🔮 Análise Preditiva":
             st.dataframe(df_paciente)
 
 # ==========================================
-# PÁGINA 2: FONTE DE DADOS E DASHBOARDS
+# PÁGINA 2: DASHBOARDS
 # ==========================================
-elif opcao_menu == "📊 Fonte de Dados":
+# ALTERAÇÃO AQUI: Correspondência com o novo nome no menu
+elif opcao_menu == "📊 Dashboards":
     st.title("📊 Dashboards Analíticos")
-    st.markdown("Exploração da base de dados limpa oficial utilizada para treinar a Inteligência Artificial.")
+    st.markdown("Exploração visual dos dados utilizados para treinar o modelo de Machine Learning. A análise detalhada por ser vista na Documentação Executiva.")
     
     st.markdown("""
     <style>
@@ -224,11 +225,11 @@ elif opcao_menu == "📊 Fonte de Dados":
         
         col_metric1, col_metric2, col_metric3 = st.columns(3)
         with col_metric1:
-            st.metric(label="📊 Tamanho da Amostra", value=total_amostra)
+            st.metric(label="📊 Total de Dados da Amostra", value=total_amostra)
         with col_metric2:
             st.metric(label="🚬 Total de Fumantes", value=total_fumantes)
         with col_metric3:
-            st.metric(label="🍔 Consumo alimentos calóricos", value=total_favc)
+            st.metric(label="🍔 Total Consomem Alimentos Altamente Calóricos", value=total_favc)
                     
         st.markdown("---")
         
@@ -302,8 +303,8 @@ elif opcao_menu == "📊 Fonte de Dados":
         sns.despine()
         st.pyplot(fig4)
         
-        with st.expander("Ver Tabela de Dados Original (CSV Limpo)"):
-            st.dataframe(df)
+        # O EXPANSOR FOI REMOVIDO DAQUI
+        
     except Exception as e:
         st.error(f"⚠️ Erro ao carregar os dados. Verifique a conexão de internet ou a URL do GitHub. Erro: {e}")
 
@@ -312,10 +313,10 @@ elif opcao_menu == "📊 Fonte de Dados":
 # ==========================================
 elif opcao_menu == "⚙️ Pipeline Machine Learning":
     st.title("⚙️ Pipeline de Machine Learning")
-    st.markdown("Abaixo, pode forçar o re-treinamento manual da Inteligência Artificial usando a nova lógica de Label Encoding com 80.38% de precisão.")
+    st.markdown("Abaixo, pode forçar o re-treinamento manual da Inteligência Artificial caso mude a origem dos dados.")
 
     if st.button("🚀 Forçar Re-treinamento do Modelo", type="primary"):
-        with st.spinner("A ler dados limpos, a aplicar Label Encoding e a re-treinar a IA..."):
+        with st.spinner("A ler dados limpos, a a re-treinar a IA..."):
             from sklearn.model_selection import train_test_split
             from sklearn.ensemble import RandomForestClassifier
             from sklearn.preprocessing import LabelEncoder
@@ -360,10 +361,19 @@ elif opcao_menu == "⚙️ Pipeline Machine Learning":
             except Exception as e:
                 st.error(f"Ocorreu um erro durante o treinamento: {e}")
 
+    # ALTERAÇÃO AQUI: Expansor adicionado no final da página Pipeline com novo nome
+    st.markdown("---")
+    st.subheader("Base de Dados Oficial")
+    try:
+        df_view = carregar_dados()
+        with st.expander("Ver Origem dos Dados (Tratados) "):
+            st.dataframe(df_view)
+    except Exception as e:
+        st.error(f"⚠️ Erro ao carregar os dados para visualização. Erro: {e}")
+
 # ==========================================
 # PÁGINA 4: DOCUMENTAÇÃO EXECUTIVA (PDF)
 # ==========================================
-# ALTERAÇÃO AQUI: Correspondência com o novo nome no menu
 elif opcao_menu == "📖 Documentação Executiva":
     st.title("📖 Documentação Executiva do Projeto")
     st.info("A redirecionar... O documento PDF deve abrir automaticamente numa nova aba do seu navegador.")
